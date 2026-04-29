@@ -948,7 +948,6 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
     <button class="tab on" onclick="sterlingTab('life',this)" style="white-space:nowrap">🌟 Daily life</button>
     <button class="tab" onclick="sterlingTab('milestones',this)" style="white-space:nowrap">🏆 Milestones</button>
     <button class="tab" onclick="sterlingTab('wishlist',this)" style="white-space:nowrap">💰 Allowance</button>
-    <button class="tab" onclick="sterlingTab('health',this)" style="white-space:nowrap">🩺 Health</button>
   </div>
 
   <!-- DAILY LIFE -->
@@ -1145,41 +1144,6 @@ select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='ht
   </div>
 
   <!-- HEALTH -->
-  <div id="st-health" style="display:none">
-    <div class="sl">General health info</div>
-    <div class="card"><div class="cb" style="padding:12px 15px">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-        <div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Date of birth</div>
-          <div style="font-size:13px;font-weight:600">12/12/2021</div>
-        </div>
-        <div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:3px">Insurance</div>
-          <div style="font-size:13px;font-weight:600">Kaiser</div>
-          <div style="font-size:12px;color:var(--muted)">#19263292</div>
-        </div>
-      </div>
-      <div style="border-top:1px solid var(--border);padding-top:12px;margin-bottom:14px">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:6px">Pediatrician</div>
-        <div style="font-size:13px;font-weight:600">Dr. Adrian Goldman, DO</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:2px">Pediatrics · Kaiser</div>
-        <div style="font-size:12px;color:var(--muted)">Elk Grove Promenade Medical Offices</div>
-        <div style="font-size:12px;color:var(--muted)">📞 916-544-6600</div>
-      </div>
-      <div style="border-top:1px solid var(--border);padding-top:12px">
-        <div class="fr"><div class="fl">Blood type</div><input type="text" id="stBloodType" placeholder="e.g. A+"></div>
-        <div class="fr"><div class="fl">Allergies</div><textarea id="stAllergies" rows="2" placeholder="Food, environmental, medication allergies…"></textarea></div>
-        <div class="fr"><div class="fl">Conditions / diagnoses</div><textarea id="stConditions" rows="2" placeholder="Any ongoing conditions…"></textarea></div>
-        <div class="fr"><div class="fl">Current medications</div><textarea id="stMeds" rows="2" placeholder="Name, dose, frequency…"></textarea></div>
-        <div class="fr"><div class="fl">Dentist</div><input type="text" id="stDentist" placeholder="Dentist, clinic, phone"></div>
-      </div>
-    </div></div>
-    <div class="sl">Health log</div>
-    <div class="card">
-      <div class="ch"><div class="ct">Health log</div><button class="btn btn-g" onclick="openMo('mo-sterling-health')">+ Add entry</button></div>
-      <div class="cb" id="sterling-health-list"></div>
-    </div>
-  </div>
 
   <!-- INFO -->
 
@@ -7406,7 +7370,7 @@ function renderFitnessBar(){
     +'</div>'
     +'</div>'
     +'<div style="padding:8px 14px;display:flex;gap:8px;align-items:center;border-top:1px solid var(--border)">'
-      +'<button onclick="openQuickWorkout(event)" style="flex:1;background:var(--green-bg);border:1px solid var(--green);border-radius:8px;padding:8px;cursor:pointer;font-family:Nunito,sans-serif;font-size:12px;font-weight:700;color:var(--green)">+ Quick log workout</button>'
+      +'<button onclick="openQuickWorkout(event)" style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px;cursor:pointer;font-family:Nunito,sans-serif;font-size:12px;font-weight:700;color:var(--muted)">+ Quick log workout</button>'
       +'<button onclick="event.stopPropagation();openHealthWorkouts()" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;cursor:pointer;font-family:Nunito,sans-serif;font-size:12px;font-weight:600;color:var(--muted)">Open</button>'
     +'</div>'
   +'</div>';
@@ -7807,9 +7771,16 @@ function saveSterlingHealth(){
   if(!S.sterlingHealth)S.sterlingHealth=[];
   S.sterlingHealth.push({id:'sh'+Date.now(),date:dateVal,type:document.getElementById('sh-type').value,title,notes:document.getElementById('sh-notes').value.trim()});
   ['sh-date','sh-title','sh-notes'].forEach(id=>document.getElementById(id).value='');
-  closeMo('mo-sterling-health');renderSterlingHealth();save();
+  closeMo('mo-sterling-health');
+  // Refresh wherever we are — Family Health overview if visible
+  if((S.health&&S.health.currentPerson)==='sterling')renderHealth();
+  save();
 }
-function removeSterlingHealth(i){S.sterlingHealth.splice(i,1);renderSterlingHealth();save();}
+function removeSterlingHealth(i){
+  S.sterlingHealth.splice(i,1);
+  if((S.health&&S.health.currentPerson)==='sterling')renderHealth();
+  save();
+}
 
 
 
@@ -8561,6 +8532,13 @@ const ALL_ANIMALS=[
   {id:'billy', name:'Billy',  variety:'Blue/grey budgie · 🦜',  body:'#8898a8',wing:'#b8c8d8',cheek:'#d8e4ee',type:'bird'},
   {id:'puggie',name:'Puggie Puggie Fish Head',variety:'Betta fish · 🐟',body:'#4060C0',wing:'#8090E0',cheek:'#C0D0FF',type:'fish'},
 ];
+// Apply saved custom names to ALL_ANIMALS on load
+(function(){
+  try{
+    var raw=localStorage.getItem('grossmanHousehold');
+    if(raw){var saved=JSON.parse(raw);var cn=saved.corePetNames||{};ALL_ANIMALS.forEach(function(a){if(cn[a.id])a.name=cn[a.id];});}
+  }catch(e){}
+})();
 
 function animalSvg(a){
   if(a.type==='dog') return`<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%">
@@ -8790,13 +8768,14 @@ function restoreCorePet(id){
 
 function rebuildAllAnimals(){
   var hiddenCore=S.hiddenCorePets||[];
-  // Reset to core animals, filtering hidden ones
+  var customNames=S.corePetNames||{};
+  // Reset to core animals, applying any custom names, filtering hidden ones
   var coreAnimals=[
-    {id:'clarence',name:'Clarence Worley',variety:'Senior dog · 🐕',body:'#D4A574',wing:'#E8C99A',cheek:'#F5E6D0',type:'dog'},
-    {id:'doc',   name:'Doc',    variety:'Blue/white budgie · 🦜',body:'#7ec8d0',wing:'#e8f4f8',cheek:'#f0fafe',type:'bird'},
-    {id:'morgan',name:'Morgan', variety:'Green budgie · 🦜',      body:'#4e8a38',wing:'#6ab04c',cheek:'#a8d060',type:'bird'},
-    {id:'billy', name:'Billy',  variety:'Blue/grey budgie · 🦜',  body:'#8898a8',wing:'#b8c8d8',cheek:'#d8e4ee',type:'bird'},
-    {id:'puggie',name:'Puggie Puggie Fish Head',variety:'Betta fish · 🐟',body:'#4060C0',wing:'#8090E0',cheek:'#C0D0FF',type:'fish'},
+    {id:'clarence',name:customNames.clarence||'Clarence Worley',variety:'Senior dog · 🐕',body:'#D4A574',wing:'#E8C99A',cheek:'#F5E6D0',type:'dog'},
+    {id:'doc',   name:customNames.doc||'Doc',    variety:'Blue/white budgie · 🦜',body:'#7ec8d0',wing:'#e8f4f8',cheek:'#f0fafe',type:'bird'},
+    {id:'morgan',name:customNames.morgan||'Morgan', variety:'Green budgie · 🦜',      body:'#4e8a38',wing:'#6ab04c',cheek:'#a8d060',type:'bird'},
+    {id:'billy', name:customNames.billy||'Billy',  variety:'Blue/grey budgie · 🦜',  body:'#8898a8',wing:'#b8c8d8',cheek:'#d8e4ee',type:'bird'},
+    {id:'puggie',name:customNames.puggie||'Puggie Puggie Fish Head',variety:'Betta fish · 🐟',body:'#4060C0',wing:'#8090E0',cheek:'#C0D0FF',type:'fish'},
   ].filter(function(a){return hiddenCore.indexOf(a.id)===-1;});
   ALL_ANIMALS.length=0;
   coreAnimals.forEach(function(a){ALL_ANIMALS.push(a);});
@@ -8806,22 +8785,23 @@ function rebuildAllAnimals(){
   if(insertIdx===-1)insertIdx=0; else insertIdx=1;
   customs.forEach(function(p,i){
     var cols=TYPE_COLORS[p.type]||TYPE_COLORS.other;
-    ALL_ANIMALS.splice(insertIdx+i,0,{id:p.id,name:p.name,variety:p.variety,body:cols.body,wing:cols.wing,cheek:cols.cheek,type:p.type});
+    var cname=customNames[p.id]||p.name;
+    ALL_ANIMALS.splice(insertIdx+i,0,{id:p.id,name:cname,variety:p.variety,body:cols.body,wing:cols.wing,cheek:cols.cheek,type:p.type});
   });
   // Rebuild pet log modal animal selector
   var sel=document.getElementById('pl-animal');
   if(sel){
-    // Rebuild from scratch
+    var cNames=S.corePetNames||{};
     var allOpts=[
-      {value:'clarence',label:'🐕 Clarence Worley'},
+      {value:'clarence',label:'🐕 '+(cNames.clarence||'Clarence Worley')},
     ];
-    customs.forEach(function(p){allOpts.push({value:p.id,label:(TYPE_EMOJI[p.type]||'🐾')+' '+p.name});});
+    customs.forEach(function(p){allOpts.push({value:p.id,label:(TYPE_EMOJI[p.type]||'🐾')+' '+(cNames[p.id]||p.name)});});
     allOpts=allOpts.concat([
-      {value:'doc',label:'🦜 Doc'},
-      {value:'morgan',label:'🦜 Morgan'},
-      {value:'billy',label:'🦜 Billy'},
+      {value:'doc',label:'🦜 '+(cNames.doc||'Doc')},
+      {value:'morgan',label:'🦜 '+(cNames.morgan||'Morgan')},
+      {value:'billy',label:'🦜 '+(cNames.billy||'Billy')},
       {value:'all-birds',label:'🦜🦜🦜 All three budgies'},
-      {value:'puggie',label:'🐟 Puggie Puggie Fish Head'},
+      {value:'puggie',label:'🐟 '+(cNames.puggie||'Puggie Puggie Fish Head')},
     ]);
     // Filter out hidden core pets
     allOpts=allOpts.filter(function(o){return hiddenCore.indexOf(o.value)===-1;});
@@ -8830,7 +8810,7 @@ function rebuildAllAnimals(){
   // Rebuild wiki/sos tabs
   rebuildWikiSosTabs();
   // Rebuild pet name map
-  customs.forEach(function(p){PET_NAMES[p.id]=(TYPE_EMOJI[p.type]||'🐾')+' '+p.name;});
+  customs.forEach(function(p){PET_NAMES[p.id]=(TYPE_EMOJI[p.type]||'🐾')+' '+(customNames[p.id]||p.name);});
   buildFlockTab();
 }
 
@@ -8894,28 +8874,48 @@ function openManagePets(){
 function renderManagePetsList(){
   var el=document.getElementById('manage-pets-list');if(!el)return;
   var customs=getCustomPets();
+  var customNames=S.corePetNames||{};
   var coreHtml='<div class="sl" style="margin-top:0">Current pets</div>';
-  // Core pets (non-deletable)
   var coreNames=[
-    {id:'clarence',label:'🐕 Clarence Worley',core:true},
-    {id:'doc',label:'🦜 Doc',core:true},
-    {id:'morgan',label:'🦜 Morgan',core:true},
-    {id:'billy',label:'🦜 Billy',core:true},
-    {id:'puggie',label:'🐟 Puggie Puggie Fish Head',core:true}
+    {id:'clarence',defaultName:'Clarence Worley',emoji:'🐕',core:true},
+    {id:'doc',defaultName:'Doc',emoji:'🦜',core:true},
+    {id:'morgan',defaultName:'Morgan',emoji:'🦜',core:true},
+    {id:'billy',defaultName:'Billy',emoji:'🦜',core:true},
+    {id:'puggie',defaultName:'Puggie Puggie Fish Head',emoji:'🐟',core:true}
   ];
   customs.forEach(function(p){
-    coreNames.splice(1,0,{id:p.id,label:(TYPE_EMOJI[p.type]||'🐾')+' '+p.name,core:false});
+    coreNames.splice(1,0,{id:p.id,defaultName:p.name,emoji:(TYPE_EMOJI[p.type]||'🐾'),core:false});
   });
   var hiddenCore=S.hiddenCorePets||[];
   el.innerHTML=coreHtml+coreNames.map(function(p){
     var hidden=hiddenCore.indexOf(p.id)!==-1;
-    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">'
-      +'<div style="flex:1;font-size:13px;font-weight:500'+(hidden?';color:var(--hint);text-decoration:line-through':'')+'">'+p.label+'</div>'
+    var displayName=customNames[p.id]||p.defaultName;
+    return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">'
+      +'<div style="flex:1;font-size:13px;font-weight:500'+(hidden?';color:var(--hint);text-decoration:line-through':'')+'">'+p.emoji+' '+escapeHtml(displayName)+'</div>'
+      +'<button onclick="openRenamePet(\''+p.id+'\',\''+p.defaultName+'\')" style="border:none;background:var(--amber-bg);color:var(--amber);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:\'Nunito\',sans-serif">Rename</button>'
       +(hidden
-        ?'<button onclick="restoreCorePet(\''+p.id+'\')" style="border:none;background:var(--green-bg);color:var(--green);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:\'Nunito\',sans-serif">Restore</button>'
-        :'<button onclick="'+(p.core?'hideCorePet':'deleteCustomPet')+'(\''+p.id+'\')" style="border:none;background:var(--red-bg);color:var(--red);border-radius:20px;padding:4px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:\'Nunito\',sans-serif">Remove</button>')
+        ?'<button onclick="restoreCorePet(\''+p.id+'\')" style="border:none;background:var(--green-bg);color:var(--green);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:\'Nunito\',sans-serif">Restore</button>'
+        :'<button onclick="'+(p.core?'hideCorePet':'deleteCustomPet')+'(\''+p.id+'\')" style="border:none;background:var(--red-bg);color:var(--red);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:\'Nunito\',sans-serif">Remove</button>')
       +'</div>';
   }).join('');
+}
+
+function openRenamePet(id, defaultName){
+  var current=(S.corePetNames||{})[id]||defaultName;
+  var newName=prompt('Rename pet (current: '+current+'):',current);
+  if(newName===null)return;
+  newName=newName.trim();
+  if(!newName){toast('Name cannot be empty.','err');return;}
+  if(!S.corePetNames)S.corePetNames={};
+  S.corePetNames[id]=newName;
+  // Also update customPets if it's a custom pet
+  if(S.customPets){
+    S.customPets=S.customPets.map(function(p){return p.id===id?Object.assign({},p,{name:newName}):p;});
+  }
+  save();
+  rebuildAllAnimals();
+  renderManagePetsList();
+  toast('Renamed to '+newName,'ok');
 }
 
 function addCustomPet(){
@@ -9281,8 +9281,7 @@ function taskFreqTab(freq,btn){
   renderTasks();
 }
 function sterlingTab(name,btn){
-  ['life','milestones','wishlist','health'].forEach(t=>{const el=document.getElementById('st-'+t);if(el)el.style.display=t===name?'block':'none';})
-  if(name==='health')renderSterlingHealth();
+  ['life','milestones','wishlist'].forEach(t=>{const el=document.getElementById('st-'+t);if(el)el.style.display=t===name?'block':'none';})
   if(name==='life')renderActivityCards();
   if(name==='wishlist'){renderWishlist();renderAllowance();}
   document.querySelectorAll('#pg-sterling .tab').forEach(b=>b.classList.remove('on'));
@@ -10153,7 +10152,7 @@ function renderHealthProfile(){
       (fhExpanded?'<div style="padding:14px;font-size:13px;line-height:1.6;white-space:pre-wrap;'+(fh?'':'color:var(--hint)')+'">'+(fh?escapeHtml(fh):'No family history entered yet.')+'</div>':'')+
     '</div>';
 
-  body.innerHTML=sterlingBanner+l1Section+l2Section+vaxSection+fhSection;
+  body.innerHTML=l1Section+l2Section+vaxSection+fhSection;
 }
 function toggleHealthCollapse(which,person){
   const set=which==='vaccines'?_healthProfileUI.vaccinesExpanded:_healthProfileUI.famHistExpanded;
@@ -10169,9 +10168,8 @@ function formatShortDate(isoDate){
   }catch(e){return isoDate;}
 }
 
-// ── Profile edit (Hannah/Trent only) ──
+// ── Profile edit ──
 function openHealthProfileEdit(person){
-  if(person==='sterling')return;
   const d=getHealthPersonData(person);
   document.getElementById('hp-modal-title').textContent='Edit — '+((HEALTH_PEOPLE[person]||{}).label||'');
   document.getElementById('hp-person').value=person;
