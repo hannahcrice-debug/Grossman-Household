@@ -7097,18 +7097,26 @@ function renderHealthBar(){
   const pt=S.petTasks[td]||{};
   // TASKS — count daily + overdue weekly/monthly together as "things due now"
   const daily=S.tasks.filter(t=>t.freq==='daily');
-  const now=new Date();
+  // Use week/month boundaries (matching renderDashUpcoming) so completing a task
+  // this week/month immediately removes it from the overdue count.
+  const nowB=new Date();nowB.setHours(0,0,0,0);
+  const todayDowB=nowB.getDay();
+  const weekStartB=new Date(nowB);weekStartB.setDate(weekStartB.getDate()-todayDowB);
+  const weekStartStrB=weekStartB.toISOString().slice(0,10);
+  const monthStartStrB=nowB.getFullYear()+'-'+String(nowB.getMonth()+1).padStart(2,'0')+'-01';
   const overdueWeeklyTasks=S.tasks.filter(t=>{
     if(t.freq!=='weekly')return false;
+    if(t.dd&&t.dd>=weekStartStrB)return false; // completed this week
     if(!t.dd)return true; // never done
-    const last=new Date(t.dd.replace(/(\d+)-(\d+)-(\d+)/,'$1/$2/$3'));
-    return(now-last)/(1000*60*60*24)>7;
+    const last=new Date(t.dd+'T12:00:00');
+    return(nowB-last)/86400000>7;
   });
   const overdueMonthlyTasks=S.tasks.filter(t=>{
     if(t.freq!=='monthly')return false;
+    if(t.dd&&t.dd>=monthStartStrB)return false; // completed this month
     if(!t.dd)return true; // never done
-    const last=new Date(t.dd.replace(/(\d+)-(\d+)-(\d+)/,'$1/$2/$3'));
-    return(now-last)/(1000*60*60*24)>31;
+    const last=new Date(t.dd+'T12:00:00');
+    return(nowB-last)/86400000>31;
   });
   const overdueWeekly=overdueWeeklyTasks.length;
   const overdueMonthly=overdueMonthlyTasks.length;
@@ -7116,7 +7124,8 @@ function renderHealthBar(){
   const doneTasks=daily.filter(t=>t.dd===td).length;
   const doneAll=allDue.filter(t=>t.dd===td).length;
   const taskScore=allDue.length?Math.round((doneAll/allDue.length)*100):100;
-  const overdueCount=overdueWeekly+overdueMonthly;
+  // Only count overdue tasks not yet completed today
+  const overdueCount=overdueWeeklyTasks.filter(t=>t.dd!==td).length+overdueMonthlyTasks.filter(t=>t.dd!==td).length;
   const taskDetail=doneTasks+' of '+daily.length+' done today'+(overdueCount?' · '+overdueCount+' overdue':'');
   // PETS — match exactly the 3 keys shown on the dashboard check-in
   const petKeys=['cl-am',...(S.customPets||[]).map(p=>p.id+'-am'),'bd-food','pg-food'];
