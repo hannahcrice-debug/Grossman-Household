@@ -7791,9 +7791,13 @@ const HEALTH_ICONS={
 };
 function renderSterlingHealth(){
   const el=document.getElementById('sterling-health-list');if(!el)return;
-  const entries=(S.sterlingHealth||[]).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const all=S.sterlingHealth||[];
+  const entries=[...all].sort((a,b)=>new Date(b.date+'T12:00:00')-new Date(a.date+'T12:00:00'));
   if(!entries.length){el.innerHTML='<div style="color:var(--hint);font-size:13px">No health entries yet. Tap "+ Add entry" to start tracking.</div>';return;}
-  el.innerHTML=entries.map((e,i)=>`<div style="padding:10px 0;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:flex-start;gap:10px"><div style="font-size:20px;flex-shrink:0">${HEALTH_ICONS[e.type]||'📝'}</div><div style="flex:1"><div style="font-size:13px;font-weight:600">${escapeHtml(e.title)}</div><div style="font-size:11px;color:var(--muted);margin-top:1px">${escapeHtml(e.type)} · ${e.date?new Date(e.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''}</div>${e.notes?`<div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5">${escapeHtml(e.notes)}</div>`:''}</div><button onclick="removeSterlingHealth(${i})" style="border:none;background:none;cursor:pointer;color:var(--hint);font-size:16px;flex-shrink:0">✕</button></div></div>`).join('');
+  el.innerHTML=entries.map((e)=>{
+    const realIdx=all.indexOf(e);
+    return`<div style="padding:10px 0;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:flex-start;gap:10px"><div style="font-size:20px;flex-shrink:0">${HEALTH_ICONS[e.type]||'📝'}</div><div style="flex:1"><div style="font-size:13px;font-weight:600">${escapeHtml(e.title)}</div><div style="font-size:11px;color:var(--muted);margin-top:1px">${escapeHtml(e.type)} · ${e.date?new Date(e.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''}</div>${e.notes?`<div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5">${escapeHtml(e.notes)}</div>`:''}</div><button onclick="removeSterlingHealth(${realIdx})" style="border:none;background:none;cursor:pointer;color:var(--hint);font-size:16px;flex-shrink:0">✕</button></div></div>`;
+  }).join('');
 }
 function saveSterlingHealth(){
   const title=document.getElementById('sh-title').value.trim();if(!title)return;
@@ -9790,9 +9794,6 @@ function resetMedicalEmergModal(){
 const _healthProfileUI={vaccinesExpanded:new Set(), famHistExpanded:new Set()};
 
 function getHealthPersonData(person){
-  // Returns unified view of a person's Layer 1 + Layer 2 data.
-  // For Hannah and Trent: merges hannahEmerg/hannahFull (or trentEmerg/trentFull).
-  // For Sterling: reads from S.sterlingInfo, plus a vaccines/familyHistory field we add there.
   if(!S.health)S.health={};
   if(person==='sterling'){
     const si=S.sterlingInfo||{};
@@ -9800,13 +9801,13 @@ function getHealthPersonData(person){
       dob:si.dob||'',bloodType:si.bloodType||'',
       allergies:si.allergies||'',meds:si.meds||'',conditions:si.conditions||'',
       insurance:si.insurance||'',
-      primaryDoctor:si.doctor||'',primaryDoctorPhone:'',
+      primaryDoctor:si.doctor||'Dr. Adrian Goldman, DO',primaryDoctorPhone:si.doctorPhone||'916-544-6600',
       emergencyContact:si.emergencyContact||'',
-      height:'',specialists:si.dentist?'Dentist: '+si.dentist:'',
-      pharmacy:'',
+      height:si.height||'',specialists:si.dentist?'Dentist: '+si.dentist:'',
+      pharmacy:si.pharmacy||'',
       vaccines:si.vaccines||[],
       familyHistory:si.familyHistory||'',
-      editable:false, // Sterling edits happen on his own page
+      editable:true,
     };
   }
   const emerg=S.health[person+'Emerg']||{};
@@ -10015,19 +10016,45 @@ function renderHealthOverview(){
     '</div>';
   }
 
-  // ── 6. Quick actions
+  // ── 6. Sterling health log (only shown for Sterling)
+  let sterlingLogHtml='';
+  if(person==='sterling'){
+    const sEntries=(S.sterlingHealth||[]).slice().sort((a,b)=>new Date(b.date+'T12:00:00')-new Date(a.date+'T12:00:00'));
+    const logRows=sEntries.slice(0,5).map(function(e){
+      const realIdx=(S.sterlingHealth||[]).indexOf(e);
+      return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)">'+
+        '<div style="font-size:18px;flex-shrink:0">'+(HEALTH_ICONS[e.type]||'📝')+'</div>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:13px;font-weight:600">'+escapeHtml(e.title)+'</div>'+
+          '<div style="font-size:11px;color:var(--muted);margin-top:1px">'+escapeHtml(e.type)+' · '+(e.date?new Date(e.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'')+
+          '</div>'+
+          (e.notes?'<div style="font-size:12px;color:var(--muted);margin-top:3px">'+escapeHtml(e.notes)+'</div>':'')+
+        '</div>'+
+        '<button onclick="removeSterlingHealth('+realIdx+')" style="border:none;background:none;cursor:pointer;color:var(--hint);font-size:16px;flex-shrink:0">✕</button>'+
+      '</div>';
+    }).join('');
+    sterlingLogHtml='<div class="card" style="margin-bottom:12px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--border)">'+
+        '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">📋 Health log</div>'+
+        '<button class="btn btn-g" onclick="openMo(\'mo-sterling-health\')" style="font-size:11px;padding:4px 10px">+ Add</button>'+
+      '</div>'+
+      (logRows||'<div style="padding:14px;text-align:center;color:var(--hint);font-size:13px">No entries yet. Tap + Add to start.</div>')+
+    '</div>';
+  }
+
+  // ── 7. Quick actions
   const actionsHtml='<div style="display:flex;gap:8px;margin-bottom:8px">'+
-    '<button class="btn btn-p" onclick="openWorkoutEdit(\'\')" style="flex:1;font-size:11px;padding:8px">+ Workout</button>'+
+    (person==='sterling'?'':'<button class="btn btn-p" onclick="openWorkoutEdit(\'\')" style="flex:1;font-size:11px;padding:8px">+ Workout</button>')+
     '<button class="btn btn-p" onclick="openAppointmentEdit(\'\')" style="flex:1;font-size:11px;padding:8px">+ Appointment</button>'+
-    '<button class="btn btn-p" onclick="openLabEdit(\'\')" style="flex:1;font-size:11px;padding:8px">+ Lab</button>'+
+    (person==='sterling'?'':'<button class="btn btn-p" onclick="openLabEdit(\'\')" style="flex:1;font-size:11px;padding:8px">+ Lab</button>')+
   '</div>';
 
   // ── Empty state for people with literally no data anywhere
-  const isEmpty=!nextApptHtml&&!checkupHtml&&!fitnessHtml&&!labsHtml&&!snapItems.length;
+  const isEmpty=!nextApptHtml&&!checkupHtml&&!fitnessHtml&&!labsHtml&&!snapItems.length&&!sterlingLogHtml;
   const emptyHtml=isEmpty?
     '<div class="card" style="margin-bottom:12px"><div style="padding:24px 16px;text-align:center;color:var(--hint);font-size:13px">No health data yet for '+escapeHtml(meta.label)+'.<br>Use the buttons below or the other tabs to start logging.</div></div>':'';
 
-  body.innerHTML=snapHtml+nextApptHtml+checkupHtml+fitnessHtml+labsHtml+emptyHtml+actionsHtml;
+  body.innerHTML=snapHtml+nextApptHtml+checkupHtml+fitnessHtml+labsHtml+sterlingLogHtml+emptyHtml+actionsHtml;
 }
 
 
@@ -10039,11 +10066,7 @@ function renderHealthProfile(){
   const name=(HEALTH_PEOPLE[person]||{}).label||'Hannah';
   const age=ageFromDob(d.dob);
 
-  // Sterling banner
-  const sterlingBanner=person==='sterling'?
-    '<div class="alt alt-g" style="margin-bottom:12px"><span class="ai">⭐</span><span>Sterling\'s medical info is edited from his own page — use the Sterling tab in the bottom nav. This view pulls from the same data.</span></div>':'';
-
-  // Edit button (only for Hannah/Trent)
+  // Edit button
   const editBtn=d.editable?
     '<button class="btn btn-g" onclick="openHealthProfileEdit(\''+person+'\')" style="font-size:11px;padding:5px 12px">✏️ Edit</button>':'';
 
@@ -10168,16 +10191,33 @@ function openHealthProfileEdit(person){
 }
 function saveHealthProfile(){
   const person=document.getElementById('hp-person').value;
-  if(person!=='hannah'&&person!=='trent')return;
   if(!S.health)S.health={};
+  const dobVal=document.getElementById('hp-dob').value;
+  const dobErr=validateDate(dobVal,'dob');
+  if(dobErr){toast(dobErr,'err');return;}
+  // Sterling saves to S.sterlingInfo
+  if(person==='sterling'){
+    if(!S.sterlingInfo)S.sterlingInfo={};
+    S.sterlingInfo.dob=dobVal;
+    S.sterlingInfo.bloodType=document.getElementById('hp-bloodType').value.trim();
+    S.sterlingInfo.allergies=document.getElementById('hp-allergies').value.trim();
+    S.sterlingInfo.meds=document.getElementById('hp-meds').value.trim();
+    S.sterlingInfo.conditions=document.getElementById('hp-conditions').value.trim();
+    S.sterlingInfo.insurance=document.getElementById('hp-insurance').value.trim();
+    S.sterlingInfo.doctor=document.getElementById('hp-primaryDoctor').value.trim();
+    S.sterlingInfo.doctorPhone=document.getElementById('hp-primaryDoctorPhone').value.trim();
+    S.sterlingInfo.emergencyContact=document.getElementById('hp-emergencyContact').value.trim();
+    S.sterlingInfo.height=document.getElementById('hp-height').value.trim();
+    S.sterlingInfo.dentist=document.getElementById('hp-specialists').value.trim();
+    S.sterlingInfo.pharmacy=document.getElementById('hp-pharmacy').value.trim();
+    if(!Array.isArray(S.sterlingInfo.vaccines))S.sterlingInfo.vaccines=[];
+    closeMo('mo-health-profile');renderHealthProfile();save();
+    return;
+  }
   const emergKey=person+'Emerg';
   const fullKey=person+'Full';
   if(!S.health[emergKey])S.health[emergKey]={};
   if(!S.health[fullKey])S.health[fullKey]={vaccines:[],familyHistory:''};
-  // Layer 1 — emergency card
-  const dobVal=document.getElementById('hp-dob').value;
-  const dobErr=validateDate(dobVal,'dob');
-  if(dobErr){toast(dobErr,'err');return;}
   S.health[emergKey].dob=dobVal;
   S.health[emergKey].bloodType=document.getElementById('hp-bloodType').value.trim();
   S.health[emergKey].allergies=document.getElementById('hp-allergies').value.trim();
@@ -10187,7 +10227,6 @@ function saveHealthProfile(){
   S.health[emergKey].primaryDoctor=document.getElementById('hp-primaryDoctor').value.trim();
   S.health[emergKey].primaryDoctorPhone=document.getElementById('hp-primaryDoctorPhone').value.trim();
   S.health[emergKey].emergencyContact=document.getElementById('hp-emergencyContact').value.trim();
-  // Layer 2 — additional reference (preserve vaccines/familyHistory)
   S.health[fullKey].height=document.getElementById('hp-height').value.trim();
   S.health[fullKey].specialists=document.getElementById('hp-specialists').value.trim();
   S.health[fullKey].pharmacy=document.getElementById('hp-pharmacy').value.trim();
@@ -10214,13 +10253,9 @@ function openVaccineEdit(person,id){
 }
 function saveVaccine(){
   const person=document.getElementById('hv-person').value;
-  if(person!=='hannah'&&person!=='trent')return;
   const name=document.getElementById('hv-name').value.trim();
   if(!name)return;
   if(!S.health)S.health={};
-  const fullKey=person+'Full';
-  if(!S.health[fullKey])S.health[fullKey]={vaccines:[],familyHistory:''};
-  if(!Array.isArray(S.health[fullKey].vaccines))S.health[fullKey].vaccines=[];
   const id=document.getElementById('hv-id').value;
   const entry={
     id:id||'hv'+Date.now()+Math.floor(Math.random()*1000),
@@ -10228,26 +10263,37 @@ function saveVaccine(){
     date:document.getElementById('hv-date').value,
     notes:document.getElementById('hv-notes').value.trim(),
   };
-  const arr=S.health[fullKey].vaccines;
-  if(id){
-    const idx=arr.findIndex(v=>v.id===id);
-    if(idx>=0)arr[idx]=entry;else arr.push(entry);
+  if(person==='sterling'){
+    if(!S.sterlingInfo)S.sterlingInfo={};
+    if(!Array.isArray(S.sterlingInfo.vaccines))S.sterlingInfo.vaccines=[];
+    const arr=S.sterlingInfo.vaccines;
+    if(id){const idx=arr.findIndex(v=>v.id===id);if(idx>=0)arr[idx]=entry;else arr.push(entry);}
+    else arr.push(entry);
   } else {
-    arr.push(entry);
+    const fullKey=person+'Full';
+    if(!S.health[fullKey])S.health[fullKey]={vaccines:[],familyHistory:''};
+    if(!Array.isArray(S.health[fullKey].vaccines))S.health[fullKey].vaccines=[];
+    const arr=S.health[fullKey].vaccines;
+    if(id){const idx=arr.findIndex(v=>v.id===id);if(idx>=0)arr[idx]=entry;else arr.push(entry);}
+    else arr.push(entry);
   }
   closeMo('mo-health-vaccine');renderHealthProfile();save();
 }
 function deleteVaccineFromModal(){
   const person=document.getElementById('hv-person').value;
   const id=document.getElementById('hv-id').value;
-  if(!id||(person!=='hannah'&&person!=='trent'))return;
+  if(!id)return;
   const btn=document.getElementById('hv-delete-btn');
   if(!btn)return;
   if(btn.dataset.armed==='1'){
     btn.dataset.armed='';btn.textContent='Delete this vaccine';
-    const fullKey=person+'Full';
-    if(S.health&&S.health[fullKey]&&Array.isArray(S.health[fullKey].vaccines)){
-      S.health[fullKey].vaccines=S.health[fullKey].vaccines.filter(v=>v.id!==id);
+    if(person==='sterling'){
+      if(S.sterlingInfo&&Array.isArray(S.sterlingInfo.vaccines))
+        S.sterlingInfo.vaccines=S.sterlingInfo.vaccines.filter(v=>v.id!==id);
+    } else {
+      const fullKey=person+'Full';
+      if(S.health&&S.health[fullKey]&&Array.isArray(S.health[fullKey].vaccines))
+        S.health[fullKey].vaccines=S.health[fullKey].vaccines.filter(v=>v.id!==id);
     }
     closeMo('mo-health-vaccine');renderHealthProfile();save();
     return;
