@@ -3220,27 +3220,73 @@ function renderHeader(){
   document.getElementById('ds').textContent=DAYS_EN[now.getDay()]+', '+MONTHS_EN[now.getMonth()]+' '+now.getDate()+', '+now.getFullYear();
 }
 
+// ══ SHARED: Single source of truth for "what tasks need attention now" ══
+// Used by: stat counters, Today's Priorities, and Health Bar.
+// Returns {priority[], overdueCount, dailyTasks[], doneToday}
+function getTasksDueNow(){
+  const td=todayStr();
+  const now=new Date();now.setHours(0,0,0,0);
+  const todayDow=now.getDay();
+  const weekStart=new Date(now);weekStart.setDate(weekStart.getDate()-todayDow);
+  const weekStartStr=weekStart.toISOString().slice(0,10);
+  const monthStartStr=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-01';
+  const todayDom=now.getDate();
+  const seen=new Set();
+  const priority=[];
+  const addOnce=(t,reason)=>{
+    if(!t||seen.has(t.id))return;
+    if(t.snoozedUntil&&t.snoozedUntil>td)return;
+    seen.add(t.id);
+    priority.push({task:t,reason});
+  };
+  // 1) High priority -- always show, regardless of freq
+  S.tasks.filter(t=>t.pri==='high'&&t.dd!==td).forEach(t=>addOnce(t,'high'));
+  // 2) Daily tasks not done today
+  S.tasks.filter(t=>t.freq==='daily'&&t.dd!==td).forEach(t=>addOnce(t,'today'));
+  // 3) Weekly tasks: use dayOfWeek scheduling when available
+  S.tasks.filter(t=>t.freq==='weekly').forEach(t=>{
+    const completedThisWeek=t.dd&&t.dd>=weekStartStr;
+    if(completedThisWeek)return;
+    if(t.dayOfWeek!=null){
+      if(t.dayOfWeek===todayDow)addOnce(t,'today');
+      else if(t.dayOfWeek<todayDow)addOnce(t,'overdue');
+    } else {
+      if(!t.dd)addOnce(t,'today');
+      else {
+        const last=new Date(t.dd+'T12:00:00');
+        if((now-last)/(86400000)>7)addOnce(t,'overdue');
+      }
+    }
+  });
+  // 4) Monthly tasks: use dayOfMonth scheduling when available
+  S.tasks.filter(t=>t.freq==='monthly').forEach(t=>{
+    const completedThisMonth=t.dd&&t.dd>=monthStartStr;
+    if(completedThisMonth)return;
+    if(t.dayOfMonth){
+      if(t.dayOfMonth===todayDom)addOnce(t,'today');
+      else if(t.dayOfMonth<todayDom)addOnce(t,'overdue');
+    } else if(!t.dd&&todayDom>=7){
+      addOnce(t,'today');
+    }
+  });
+  // 5) Custom & work tasks with dates
+  S.tasks.filter(t=>(t.freq==='custom'||t.freq==='work')&&t.date&&t.dd!==td).forEach(t=>{
+    if(t.date===td)addOnce(t,'today');
+    else if(t.date<td)addOnce(t,'overdue');
+  });
+  const dailyTasks=S.tasks.filter(t=>t.freq==='daily');
+  const doneToday=dailyTasks.filter(t=>t.dd===td).length;
+  const overdueCount=priority.filter(p=>p.reason==='overdue').length;
+  return {priority,overdueCount,dailyTasks,doneToday};
+}
+
 function renderHome(){
   const td=todayStr();
-  const daily=S.tasks.filter(t=>t.freq==='daily');
-  // Include overdue weekly/monthly in "due today" — they need attention now
-  const nowH=new Date();
-  const overdueWeeklyH=S.tasks.filter(t=>{
-    if(t.freq!=='weekly')return false;
-    if(!t.dd)return true;
-    const last=new Date(t.dd.replace(/(\d+)-(\d+)-(\d+)/,'$1/$2/$3'));
-    return(nowH-last)/(1000*60*60*24)>7;
-  });
-  const overdueMonthlyH=S.tasks.filter(t=>{
-    if(t.freq!=='monthly')return false;
-    if(!t.dd)return true;
-    const last=new Date(t.dd.replace(/(\d+)-(\d+)-(\d+)/,'$1/$2/$3'));
-    return(nowH-last)/(1000*60*60*24)>31;
-  });
-  const allDueToday=daily.concat(overdueWeeklyH,overdueMonthlyH);
-  const allDoneToday=allDueToday.filter(t=>t.dd===td);
-  document.getElementById('st-due').textContent=allDueToday.length;
-  document.getElementById('st-done').textContent=allDoneToday.length;
+  // Use shared function for consistent task counts everywhere
+  const dueNow=getTasksDueNow();
+  const allDueCount=dueNow.dailyTasks.length+dueNow.overdueCount;
+  document.getElementById('st-due').textContent=allDueCount;
+  document.getElementById('st-done').textContent=dueNow.doneToday;
   document.getElementById('st-low').textContent=S.supplies.filter(s=>s.low).length;
   const pt=S.petTasks[td]||{};
   var hiddenCore=S.hiddenCorePets||[];
@@ -3258,61 +3304,8 @@ function renderHome(){
     return row;
   }).join('');
   renderDashUpcoming();renderHealthBar();renderCheckupBar();renderFitnessBar();renderDashBudgetBar();renderBizPulse();renderReminders();renderWeekendIdeasDash();renderBedtimeDash();renderMsgBadge();
-  const td2=todayStr();
-  // Today's priorities — comprehensive list of what needs attention today.
-  // Includes: high-pri tasks (not done), daily tasks (not done), weekly tasks
-  // due today or overdue, monthly tasks due today or overdue, and custom/work
-  // tasks scheduled for today or overdue. Deduplicated by id.
-  const now2=new Date();now2.setHours(0,0,0,0);
-  const todayDow2=now2.getDay();
-  const weekStart2=new Date(now2);weekStart2.setDate(weekStart2.getDate()-todayDow2);
-  const weekStartStr2=weekStart2.toISOString().slice(0,10);
-  const monthStartStr2=now2.getFullYear()+'-'+String(now2.getMonth()+1).padStart(2,'0')+'-01';
-  const todayDom2=now2.getDate();
-  const seen=new Set();
-  const priority=[];
-  const addOnce=(t,reason)=>{
-    if(!t||seen.has(t.id))return;
-    if(t.snoozedUntil&&t.snoozedUntil>td2)return;
-    seen.add(t.id);
-    priority.push({task:t,reason});
-  };
-  // 1) High priority — always at top, regardless of freq
-  S.tasks.filter(t=>t.pri==='high'&&t.dd!==td2).forEach(t=>addOnce(t,'high'));
-  // 2) Daily tasks not done today
-  S.tasks.filter(t=>t.freq==='daily'&&t.dd!==td2).forEach(t=>addOnce(t,'today'));
-  // 3) Weekly tasks due today or overdue (this week's scheduled day passed without completion)
-  S.tasks.filter(t=>t.freq==='weekly').forEach(t=>{
-    const completedThisWeek=t.dd&&t.dd>=weekStartStr2;
-    if(completedThisWeek)return;
-    if(t.dayOfWeek!=null){
-      if(t.dayOfWeek===todayDow2)addOnce(t,'today');
-      else if(t.dayOfWeek<todayDow2)addOnce(t,'overdue');
-    } else {
-      if(!t.dd)addOnce(t,'today');
-      else {
-        const last=new Date(t.dd+'T12:00:00');
-        if((now2-last)/(86400000)>7)addOnce(t,'overdue');
-      }
-    }
-  });
-  // 4) Monthly tasks due today or overdue
-  S.tasks.filter(t=>t.freq==='monthly').forEach(t=>{
-    const completedThisMonth=t.dd&&t.dd>=monthStartStr2;
-    if(completedThisMonth)return;
-    if(t.dayOfMonth){
-      if(t.dayOfMonth===todayDom2)addOnce(t,'today');
-      else if(t.dayOfMonth<todayDom2)addOnce(t,'overdue');
-    } else if(!t.dd&&todayDom2>=7){
-      addOnce(t,'today');
-    }
-  });
-  // 5) Custom & work tasks with dates — due today or overdue
-  S.tasks.filter(t=>(t.freq==='custom'||t.freq==='work')&&t.date&&t.dd!==td2).forEach(t=>{
-    if(t.date===td2)addOnce(t,'today');
-    else if(t.date<td2)addOnce(t,'overdue');
-  });
-  // Render — keep priorities reasonable in length (cap at 12)
+  // Today's priorities — uses shared getTasksDueNow() for consistency with Health Bar
+  const priority=dueNow.priority;
   const todayEl=document.getElementById('today-tasks');
   if(todayEl){
     if(priority.length===0){
@@ -3320,10 +3313,8 @@ function renderHome(){
     } else {
       todayEl.innerHTML=priority.slice(0,12).map(p=>{
         const overdueBadge=p.reason==='overdue'?'<span style="font-size:9px;font-weight:700;color:var(--red);background:var(--red-bg);padding:2px 6px;border-radius:20px;margin-left:6px">Overdue</span>':'';
-        // Re-render via taskRow for consistency, then inject the overdue badge into the title row
         const baseHtml=taskRow(p.task,true);
         if(overdueBadge){
-          // Insert badge after the task text
           return baseHtml.replace(/(<div class="tt[^"]*">[^<]*)/, '$1'+overdueBadge);
         }
         return baseHtml;
@@ -5650,6 +5641,12 @@ function quickAdd(type){
       var ev=document.getElementById('nce-title');if(ev)setTimeout(function(){ev.focus();},100);
       return;
     }
+    if(type==='expense'){
+      // Log a purchase/expense
+      openMo('mo-budget-tx');
+      var ex=document.getElementById('btx-desc');if(ex)setTimeout(function(){ex.focus();},100);
+      return;
+    }
   },180);
 }
 
@@ -7095,38 +7092,12 @@ function renderHealthBar(){
   const el=document.getElementById('dash-health-bar');if(!el)return;
   const td=todayStr();
   const pt=S.petTasks[td]||{};
-  // TASKS — count daily + overdue weekly/monthly together as "things due now"
-  const daily=S.tasks.filter(t=>t.freq==='daily');
-  // Use week/month boundaries (matching renderDashUpcoming) so completing a task
-  // this week/month immediately removes it from the overdue count.
-  const nowB=new Date();nowB.setHours(0,0,0,0);
-  const todayDowB=nowB.getDay();
-  const weekStartB=new Date(nowB);weekStartB.setDate(weekStartB.getDate()-todayDowB);
-  const weekStartStrB=weekStartB.toISOString().slice(0,10);
-  const monthStartStrB=nowB.getFullYear()+'-'+String(nowB.getMonth()+1).padStart(2,'0')+'-01';
-  const overdueWeeklyTasks=S.tasks.filter(t=>{
-    if(t.freq!=='weekly')return false;
-    if(t.dd&&t.dd>=weekStartStrB)return false; // completed this week
-    if(!t.dd)return true; // never done
-    const last=new Date(t.dd+'T12:00:00');
-    return(nowB-last)/86400000>7;
-  });
-  const overdueMonthlyTasks=S.tasks.filter(t=>{
-    if(t.freq!=='monthly')return false;
-    if(t.dd&&t.dd>=monthStartStrB)return false; // completed this month
-    if(!t.dd)return true; // never done
-    const last=new Date(t.dd+'T12:00:00');
-    return(nowB-last)/86400000>31;
-  });
-  const overdueWeekly=overdueWeeklyTasks.length;
-  const overdueMonthly=overdueMonthlyTasks.length;
-  const allDue=daily.concat(overdueWeeklyTasks,overdueMonthlyTasks);
-  const doneTasks=daily.filter(t=>t.dd===td).length;
-  const doneAll=allDue.filter(t=>t.dd===td).length;
-  const taskScore=allDue.length?Math.round((doneAll/allDue.length)*100):100;
-  // Only count overdue tasks not yet completed today
-  const overdueCount=overdueWeeklyTasks.filter(t=>t.dd!==td).length+overdueMonthlyTasks.filter(t=>t.dd!==td).length;
-  const taskDetail=doneTasks+' of '+daily.length+' done today'+(overdueCount?' · '+overdueCount+' overdue':'');
+  // TASKS — use shared getTasksDueNow() for consistency with Today's Priorities
+  const dueNowH=getTasksDueNow();
+  const allDueCount=dueNowH.dailyTasks.length+dueNowH.overdueCount;
+  const taskScore=allDueCount?Math.round(((dueNowH.doneToday)/allDueCount)*100):100;
+  const overdueCount=dueNowH.overdueCount;
+  const taskDetail=dueNowH.doneToday+' of '+dueNowH.dailyTasks.length+' done today'+(overdueCount?' · '+overdueCount+' overdue':'');
   // PETS — match exactly the 3 keys shown on the dashboard check-in
   const petKeys=['cl-am',...(S.customPets||[]).map(p=>p.id+'-am'),'bd-food','pg-food'];
   const petDone=petKeys.filter(k=>pt[k]).length;
@@ -11553,7 +11524,7 @@ bindBizFields();
   <div class="qa-grid">
     <button class="qa-btn" onclick="quickAdd('task')"><span class="qa-ic">✅</span><span class="qa-lb">Task</span></button>
     <button class="qa-btn" onclick="quickAdd('grocery')"><span class="qa-ic">🛒</span><span class="qa-lb">Grocery</span></button>
-    <button class="qa-btn" onclick="quickAdd('supply')"><span class="qa-ic">📦</span><span class="qa-lb">Supply low</span></button>
+    <button class="qa-btn" onclick="quickAdd('expense')"><span class="qa-ic">💸</span><span class="qa-lb">Log expense</span></button>
     <button class="qa-btn" onclick="quickAdd('message')"><span class="qa-ic">💬</span><span class="qa-lb">Message</span></button>
     <button class="qa-btn" onclick="quickAdd('event')"><span class="qa-ic">📅</span><span class="qa-lb">Add event</span></button>
     <button class="qa-btn" onclick="quickAdd('reminder')"><span class="qa-ic">🔔</span><span class="qa-lb">Reminder</span></button>
@@ -11568,6 +11539,7 @@ bindBizFields();
     <button class="qa-btn" onclick="quickAdd('spa')"><span class="qa-ic">♨️</span><span class="qa-lb">Spa chem</span></button>
     <button class="qa-btn" onclick="quickAdd('meal')"><span class="qa-ic">🍽️</span><span class="qa-lb">Plan meal</span></button>
     <button class="qa-btn" onclick="quickAdd('important')"><span class="qa-ic">⭐</span><span class="qa-lb">Important date</span></button>
+    <button class="qa-btn" onclick="quickAdd('supply')"><span class="qa-ic">📦</span><span class="qa-lb">Supply low</span></button>
   </div>
   <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 8px">Money & services</div>
   <div class="qa-grid">
